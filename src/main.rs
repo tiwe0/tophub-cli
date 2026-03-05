@@ -161,6 +161,27 @@ impl Tophub {
         self.call(&format!("/nodes/{hashid}"), &[]).await
     }
 
+    async fn node_with_retry(&self, hashid: &str, max_attempts: u8) -> Option<Value> {
+        let attempts = max_attempts.max(1);
+        for attempt in 1..=attempts {
+            match self.node(hashid).await {
+                Ok(v) => return Some(v),
+                Err(e) => {
+                    eprintln!(
+                        "node {} request failed ({}/{}): {}",
+                        hashid, attempt, attempts, e
+                    );
+                }
+            }
+        }
+
+        eprintln!(
+            "node {} dropped after {} failed attempts",
+            hashid, attempts
+        );
+        None
+    }
+
     async fn node_historys(&self, hashid: &str, date: &str) -> Result<Value, reqwest::Error> {
         self.call(
             &format!("/nodes/{hashid}/historys"),
@@ -390,7 +411,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if hashids.len() == 1 {
                 let hid = hashids[0].clone();
-                let result = tophub.node(&hid).await?;
+                let result = match tophub.node_with_retry(&hid, 3).await {
+                    Some(v) => v,
+                    None => {
+                        if let Some(format) = dump {
+                            let empty: Vec<Value> = Vec::new();
+                            let path = dump_node_items(format, &empty)?;
+                            println!("dump completed: 0 records written to {}", path);
+                        } else {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&serde_json::json!({ "items": [] }))?
+                            );
+                        }
+                        return Ok(());
+                    }
+                };
                 if let Some(format) = dump {
                     let items = vec![serde_json::json!({
                         "hashid": hid,
@@ -415,32 +451,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 for (index, hid) in hashids.into_iter().enumerate() {
                     let client = tophub.clone();
-                    set.spawn(async move { (index, hid.clone(), client.node(&hid).await) });
+                    set.spawn(async move { (index, hid.clone(), client.node_with_retry(&hid, 3).await) });
                 }
 
                 let mut ordered: Vec<Option<Value>> = vec![None; total];
                 while let Some(joined) = set.join_next().await {
                     let (index, hid, resp) = joined?;
-                    ordered[index] = Some(serde_json::json!({
-                        "hashid": hid,
-                        "data": resp?
-                    }));
+                    if let Some(data) = resp {
+                        ordered[index] = Some(serde_json::json!({
+                            "hashid": hid,
+                            "data": data
+                        }));
+                    }
                     pb.inc(1);
                 }
                 pb.finish_and_clear();
 
                 let items: Vec<Value> = ordered
                     .into_iter()
-                    .map(|item| {
-                        item.ok_or_else(|| {
-                            std::io::Error::other("failed to build ordered node results")
-                        })
-                    })
-                    .collect::<Result<_, _>>()?;
-
-                if items.len() != total {
-                    return Err(std::io::Error::other("node result count mismatch").into());
-                }
+                    .flatten()
+                    .collect();
 
                 if let Some(format) = dump {
                     let path = dump_node_items(format, &items)?;
