@@ -2,6 +2,7 @@ use chrono::Local;
 use clap::{Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{Client, header};
+use rusqlite::Connection;
 use serde_json::Value;
 use std::env;
 use std::fs::File;
@@ -25,6 +26,19 @@ fn timestamp_filename(ext: &str) -> String {
     format!("{}.{}", Local::now().format("%Y-%m-%d-%H-%M-%S"), ext)
 }
 
+fn output_filename(name: Option<&str>, ext: &str) -> String {
+    if let Some(raw) = name {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            if trimmed.ends_with(&format!(".{ext}")) {
+                return trimmed.to_string();
+            }
+            return format!("{trimmed}.{ext}");
+        }
+    }
+    timestamp_filename(ext)
+}
+
 fn value_to_text(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
@@ -35,10 +49,14 @@ fn value_to_text(value: &Value) -> String {
     }
 }
 
-fn dump_node_items(format: DumpFormat, items: &[Value]) -> Result<String, Box<dyn std::error::Error>> {
+fn dump_node_items(
+    format: DumpFormat,
+    items: &[Value],
+    name: Option<&str>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let output = match format {
         DumpFormat::Csv => {
-            let path = timestamp_filename("csv");
+            let path = output_filename(name, "csv");
             let mut writer = csv::Writer::from_path(&path)?;
             writer.write_record([
                 "hashid",
@@ -119,7 +137,7 @@ fn dump_node_items(format: DumpFormat, items: &[Value]) -> Result<String, Box<dy
             path
         }
         DumpFormat::Json => {
-            let path = timestamp_filename("json");
+            let path = output_filename(name, "json");
             let file = File::create(&path)?;
             let mut writer = BufWriter::new(file);
             let payload = serde_json::json!({ "items": items });
@@ -129,7 +147,7 @@ fn dump_node_items(format: DumpFormat, items: &[Value]) -> Result<String, Box<dy
             path
         }
         DumpFormat::Jsonl => {
-            let path = timestamp_filename("jsonl");
+            let path = output_filename(name, "jsonl");
             let file = File::create(&path)?;
             let mut writer = BufWriter::new(file);
             for item in items {
@@ -268,7 +286,7 @@ impl Tophub {
 #[command(name = "tophub-cli")]
 #[command(about = "Tophub API command line client")]
 #[command(arg_required_else_help = true)]
-#[command(after_help = "Examples:\n  tophub-cli --apikey <KEY> nodes -p 1\n  tophub-cli nodes --dumpall\n  tophub-cli node mproPpoq6O\n  tophub-cli node mproPpoq6O,KqndgxeLl9\n  tophub-cli node mproPpoq6O,KqndgxeLl9 --dump jsonl\n  tophub-cli node-historys mproPpoq6O 2023-01-01\n  tophub-cli search 苹果 -p 1 --hashid mproPpoq6O\n  tophub-cli hot --date 2023-11-04\n  tophub-cli snapshots mproPpoq6O --date 2025-11-11 --details 1\n  tophub-cli snapshot mproPpoq6O 12345\n  tophub-cli calendar-events --mode week --date 2023-11-04 --categories 1,2,3\n  tophub-cli batch --p 1 --hashid mproPpoq6O --date 2023-01-01 --q 苹果")]
+#[command(after_help = "Examples:\n  tophub-cli --apikey <KEY> nodes -p 1\n  tophub-cli nodes --dumpall\n  tophub-cli nodes --dumpall --name nodes-2026-03-11.jsonl\n  tophub-cli node mproPpoq6O\n  tophub-cli node mproPpoq6O,KqndgxeLl9\n  tophub-cli node mproPpoq6O,KqndgxeLl9 --dump jsonl\n  tophub-cli node mproPpoq6O --dump csv --name weibo.csv\n  tophub-cli node-historys mproPpoq6O 2023-01-01\n  tophub-cli search 苹果 -p 1 --hashid mproPpoq6O\n  tophub-cli hot --date 2023-11-04\n  tophub-cli snapshots mproPpoq6O --date 2025-11-11 --details 1\n  tophub-cli snapshot mproPpoq6O 12345\n  tophub-cli calendar-events --mode week --date 2023-11-04 --categories 1,2,3\n  tophub-cli batch --p 1 --hashid mproPpoq6O --date 2023-01-01 --q 苹果")]
 struct Cli {
     #[arg(long, global = true, value_name = "KEY", help = "Tophub API key, higher priority than TOPHUB_APIKEY in .env")]
     apikey: Option<String>,
@@ -285,6 +303,17 @@ enum Commands {
         p: u32,
         #[arg(long, help = "从 p=1 拉取到 p=100，并将所有榜单逐行写入 nodes.jsonl")]
         dumpall: bool,
+        #[arg(long, help = "导出文件名（不含或包含扩展名）")]
+        name: Option<String>,
+    },
+    #[command(about = "从本地 nodes.db 查询榜单")] 
+    QueryDb {
+        #[arg(long, help = "可选：类别，如 财经、报刊")] 
+        category: Option<String>,
+        #[arg(long, help = "可选：名称，支持模糊匹配")] 
+        name: Option<String>,
+        #[arg(long, help = "可选：id，支持精确或模糊")] 
+        id: Option<String>,
     },
     #[command(about = "获取单个或多个榜单最新详细内容")]
     Node {
@@ -292,6 +321,8 @@ enum Commands {
         hashid: String,
         #[arg(long, value_enum, help = "导出结果格式：csv/json/jsonl")]
         dump: Option<DumpFormat>,
+        #[arg(long, help = "导出文件名（不含或包含扩展名）")]
+        name: Option<String>,
     },
     #[command(about = "获取单个榜单历史数据集")]
     NodeHistorys {
@@ -367,9 +398,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tophub = Tophub::new(api_key)?;
 
     match cli.command {
-        Commands::Nodes { p, dumpall } => {
+                Commands::QueryDb { category, name, id } => {
+                    let conn = Connection::open("nodes.db")?;
+                    let mut sql = String::from("SELECT 类别, 名称, id FROM nodes WHERE 1=1");
+                    let mut params_vec: Vec<String> = Vec::new();
+                    if let Some(ref cat) = category {
+                        sql.push_str(" AND 类别 = ?");
+                        params_vec.push(cat.clone());
+                    }
+                    if let Some(ref n) = name {
+                        sql.push_str(" AND 名称 LIKE ?");
+                        params_vec.push(format!("%{}%", n));
+                    }
+                    if let Some(ref i) = id {
+                        sql.push_str(" AND id LIKE ?");
+                        params_vec.push(format!("%{}%", i));
+                    }
+                    let mut stmt = conn.prepare(&sql)?;
+                    // 构造参数切片
+                    let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+                    let rows = stmt.query_map(&*params_refs, |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                    })?;
+                    println!("类别,名称,id");
+                    for row in rows {
+                        let (cat, name, id) = row?;
+                        println!("{},{},{}", cat, name, id);
+                    }
+                }
+        Commands::Nodes { p, dumpall, name } => {
             if dumpall {
-                let output_path = timestamp_filename("jsonl");
+                let output_path = output_filename(name.as_deref(), "jsonl");
                 let file = File::create(&output_path)?;
                 let mut writer = BufWriter::new(file);
                 let mut total_items = 0usize;
@@ -393,7 +452,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             }
         }
-        Commands::Node { hashid, dump } => {
+        Commands::Node { hashid, dump, name } => {
             let hashids: Vec<String> = hashid
                 .split(',')
                 .map(str::trim)
@@ -416,7 +475,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     None => {
                         if let Some(format) = dump {
                             let empty: Vec<Value> = Vec::new();
-                            let path = dump_node_items(format, &empty)?;
+                            let path = dump_node_items(format, &empty, name.as_deref())?;
                             println!("dump completed: 0 records written to {}", path);
                         } else {
                             println!(
@@ -432,7 +491,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "hashid": hid,
                         "data": result
                     })];
-                    let path = dump_node_items(format, &items)?;
+                    let path = dump_node_items(format, &items, name.as_deref())?;
                     println!("dump completed: {} records written to {}", items.len(), path);
                 } else {
                     println!("{}", serde_json::to_string_pretty(&result)?);
@@ -473,7 +532,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .collect();
 
                 if let Some(format) = dump {
-                    let path = dump_node_items(format, &items)?;
+                    let path = dump_node_items(format, &items, name.as_deref())?;
                     println!("dump completed: {} records written to {}", items.len(), path);
                 } else {
                     println!(

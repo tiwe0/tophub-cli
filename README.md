@@ -10,7 +10,7 @@
 - 请求失败自动重试（`node` 命令每个 hashid 最多 3 次）
 - 失败自动丢弃（重试 3 次后跳过，不中断整个任务）
 - 导出格式支持：`csv` / `json` / `jsonl`
-- 导出文件名自动时间戳：`YYYY-MM-DD-HH-MM-SS.<fmt>`
+- 导出文件名默认时间戳：`YYYY-MM-DD-HH-MM-SS.<fmt>`，可用 `--name` 自定义
 
 ## 环境要求
 - Rust stable（建议最新稳定版）
@@ -70,6 +70,9 @@ cargo run -- nodes -p 1
 # 导出全部榜单（p=1..100）到 jsonl
 cargo run -- nodes --dumpall
 
+# 自定义导出文件名
+cargo run -- nodes --dumpall --name nodes-2026-03-11.jsonl
+
 # 单个榜单详情
 cargo run -- node mproPpoq6O
 
@@ -80,6 +83,9 @@ cargo run -- node mproPpoq6O,KqndgxeLl9
 cargo run -- node mproPpoq6O --dump csv
 cargo run -- node mproPpoq6O,KqndgxeLl9 --dump json
 cargo run -- node mproPpoq6O,KqndgxeLl9 --dump jsonl
+
+# 自定义导出文件名
+cargo run -- node mproPpoq6O --dump csv --name weibo.csv
 
 # 历史数据
 cargo run -- node-historys mproPpoq6O 2023-01-01
@@ -105,11 +111,12 @@ cargo run -- calendar-events --mode week --date 2023-11-04 --categories 1,2,3
 
 ### `nodes --dumpall`
 - 行为：固定拉取 `p=1..100`
-- 输出：`<timestamp>.jsonl`
+- 输出：`<timestamp>.jsonl`，或 `--name` 指定的文件名
 - 内容：每行一个节点（JSON Lines）
 
 ### `node --dump <fmt>`
 支持 `csv` / `json` / `jsonl`。
+支持 `--name` 自定义导出文件名（可带或不带扩展名）。
 
 #### CSV（已扁平化热点）
 `node --dump csv` 会把 `data.items[]` 中每个热点提取为一行，字段如下：

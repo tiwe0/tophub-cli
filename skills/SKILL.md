@@ -1,90 +1,81 @@
-# Tophub CLI Skill
+# Tophub CLI 技能说明
 
-## Purpose
-Use `tophub-cli` to fetch Tophub API data, support concurrent node queries, and export results to timestamped files.
+## 作用
+使用 `tophub-cli` 获取 Tophub API 数据，支持并发节点查询，并将结果导出为带时间戳的文件。
 
-## Preconditions
-- Run commands in project root: `tophub-cli`
-- API key must be provided by either:
-  - global CLI arg: `--apikey <KEY>`
-  - `.env` variable: `TOPHUB_APIKEY=...`
+## 前置条件
+- 在项目根目录下运行命令：`tophub-cli`
+- API key 必须通过以下方式之一提供：
+  - 全局 CLI 参数：`--apikey <KEY>`
+  - `.env` 文件变量：`TOPHUB_APIKEY=...`
 
-## Command Routing
-Map user intent to command:
+## 命令路由
+根据用户意图选择命令：
 
-- List leaderboard nodes:
-  - `tophub-cli nodes -p <page>`
-- Dump all node lists (page 1..100) to JSONL:
+- 列出榜单节点：
+  - `tophub-cli nodes -p <页码>`
+- 导出全部榜单（1~100页）到 JSONL：
   - `tophub-cli nodes --dumpall`
-- Query one or multiple node details:
+- 查询一个或多个节点详情：
   - `tophub-cli node <hashid>`
   - `tophub-cli node <hashid1,hashid2,...>`
-- Query node history by date:
+- 查询节点历史：
   - `tophub-cli node-historys <hashid> <YYYY-MM-DD>`
-- Search hot content:
-  - `tophub-cli search <keyword> -p <page> --hashid <optional_hashid>`
-- Daily hot top list:
+- 全网热搜内容：
+  - `tophub-cli search <关键词> -p <页码> --hashid <可选hashid>`
+- 今日热榜榜中榜：
   - `tophub-cli hot --date <YYYY-MM-DD>`
-- Node snapshots list/details:
+- 节点快照列表/详情：
   - `tophub-cli snapshots <hashid> [--date <YYYY-MM-DD>] [--details 0|1]`
-- Single snapshot detail:
+- 单个快照详情：
   - `tophub-cli snapshot <hashid> <ssid>`
-- Calendar events:
+- 日历事件：
   - `tophub-cli calendar-events [--mode day|week|month] [--date <YYYY-MM-DD>] [--categories <ids|all>]`
-- Concurrent mixed fetch:
-  - `tophub-cli batch --p <page> --hashid <hashid> --date <YYYY-MM-DD> --q <keyword>`
+- 并发混合请求：
+  - `tophub-cli batch --p <页码> --hashid <hashid> --date <YYYY-MM-DD> --q <关键词>`
 
-## Node Command Special Behavior
-- `node` supports comma-separated hashids.
-- For multiple hashids, requests run concurrently.
-- Output order follows input order.
-- A progress bar is shown during multi-hashid requests.
+## node 命令特殊说明
+- `node` 支持逗号分隔多个 hashid。
+- 多 hashid 时并发请求，输出顺序与输入一致。
+- 多节点请求时会显示进度条。
 
-## Dump Behavior
-`node` supports export:
+## 导出行为
+`node` 支持导出：
 - `--dump csv`
 - `--dump json`
 - `--dump jsonl`
+- `--name <filename>`（可带或不带扩展名）
 
-Generated filename pattern:
+生成文件名格式：
 - `YYYY-MM-DD-HH-MM-SS.<fmt>`
+或
+- `--name` 指定的文件名（若未包含对应扩展名会自动补齐）
 
-Examples:
+示例：
 - `tophub-cli node mproPpoq6O --dump csv`
 - `tophub-cli node mproPpoq6O,KqndgxeLl9 --dump jsonl`
+- `tophub-cli node mproPpoq6O --dump csv --name weibo.csv`
 
-CSV export is flattened by hotspot item (one hotspot per row), with columns:
-- `hashid`
-- `name`
-- `display`
-- `domain`
-- `logo`
-- `latest_update_timestamp`
-- `rank`
-- `title`
-- `description`
-- `url`
-- `extra`
-- `thumbnail`
-- `time`
+CSV 导出按热点条目展开，每行一个热点，字段包括：
+- `hashid`、`name`、`display`、`domain`、`logo`、`latest_update_timestamp`、`rank`、`title`、`description`、`url`、`extra`、`thumbnail`、`time`
 
-## Output Contract
-- Without dump options, commands print pretty JSON to stdout.
-- With dump options, command prints completion summary including file path.
+## 输出约定
+- 无 dump 选项时，命令输出格式化 JSON 到 stdout。
+- 有 dump 选项时，输出导出完成提示及文件路径。
 
-## Validation Rules
-- `snapshots --details` only accepts `0` or `1`.
-- `calendar-events --mode` only accepts `day`, `week`, `month`.
-- Empty hashid input for `node` is invalid.
+## 校验规则
+- `snapshots --details` 仅支持 `0` 或 `1`。
+- `calendar-events --mode` 仅支持 `day`、`week`、`month`。
+- `node` 的 hashid 不能为空。
 
-## Suggested LLM Workflow
-1. Infer user intent and select command from Command Routing.
-2. Build parameters with strict date and enum formats.
-3. Prefer `--apikey` if user provides key in prompt; otherwise rely on `.env`.
-4. If user asks for files, prefer `--dump` options.
-5. Return concise execution summary and output file location.
+## LLM 推荐工作流
+1. 推断用户意图，选择合适命令。
+2. 严格格式化日期和枚举参数。
+3. 用户有 key 优先用 `--apikey`，否则用 `.env`。
+4. 用户需导出文件时优先用 `--dump`。
+5. 返回简明执行摘要和输出文件路径。
 
-## Quick Examples
+## 快速示例
 ```bash
 tophub-cli --apikey YOUR_KEY nodes -p 1
 tophub-cli node mproPpoq6O,KqndgxeLl9
@@ -92,3 +83,60 @@ tophub-cli node mproPpoq6O --dump csv
 tophub-cli nodes --dumpall
 tophub-cli calendar-events --mode week --date 2026-03-05 --categories 1,2,3
 ```
+
+## 所有命令参数说明
+
+### 全局参数
+- `--apikey <KEY>`：Tophub API key，优先于环境变量 `TOPHUB_APIKEY`。
+
+### 子命令与参数
+
+#### nodes
+- `-p, --p <u32>`：页码，默认 1，每页 100 条。
+- `--dumpall`：从 p=1 拉取到 p=100，并将所有榜单逐行写入 nodes.jsonl。
+- `--name <String>`：导出文件名（不含或包含扩展名）。
+
+#### query-db
+- `--category <String>`：可选，类别，如 财经、报刊。
+- `--name <String>`：可选，名称，支持模糊匹配。
+- `--id <String>`：可选，id，支持精确或模糊。
+
+#### node
+- `<hashid>`：榜单 hashid，支持逗号分隔多个值。
+- `--dump <csv|json|jsonl>`：导出结果格式。
+- `--name <String>`：导出文件名（不含或包含扩展名）。
+
+#### node-historys
+- `<hashid>`：榜单 hashid。
+- `<date>`：日期，格式 YYYY-MM-DD。
+
+#### search
+- `<q>`：搜索关键词。
+- `-p, --p <u32>`：页码，默认 1。
+- `--hashid <String>`：可选，限定某个榜单 hashid。
+
+#### hot
+- `--date <YYYY-MM-DD>`：日期，格式 YYYY-MM-DD。
+
+#### snapshots
+- `<hashid>`：榜单 hashid。
+- `--date <YYYY-MM-DD>`：可选，日期，默认当天。
+- `--details <0|1>`：可选，0=仅快照列表，1=包含详细内容。
+
+#### snapshot
+- `<hashid>`：榜单 hashid。
+- `<ssid>`：快照 ID。
+
+#### calendar-events
+- `--mode <day|week|month>`：模式，默认 day。
+- `--date <YYYY-MM-DD>`：可选，日期，默认当天。
+- `--categories <String>`：可选，分类 ID，多个用逗号分隔，或 all。
+
+#### batch
+- `--p <u32>`：页码，默认 1。
+- `--hashid <String>`：榜单 hashid。
+- `--date <YYYY-MM-DD>`：日期。
+- `--q <String>`：搜索关键词。
+
+---
+每个参数均有类型和用途说明，详见上方命令示例。
