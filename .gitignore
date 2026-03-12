@@ -1,6 +1,5 @@
 /target
 .env
 *.csv
-*.json
 *.jsonl
 *.sh
