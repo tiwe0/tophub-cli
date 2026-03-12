@@ -160,4 +160,4 @@ cargo run -- calendar-events --mode week --date 2023-11-04 --categories 1,2,3
 - `skills/SKILL.md`：为 LLM 准备的技能文档（命令映射、参数规则、导出约定）
 
 ## 许可证
-如需开源发布，请补充你的 License 文件（例如 MIT）。
+MIT
