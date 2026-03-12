@@ -3,5 +3,8 @@
   "version": "0.1.0",
   "description": "基于 tophub 的命令行工具，提供快速获取实时热点资讯的功能。",
   "entry": "tophub-cli",
-  "dependencies": []
+  "dependencies": [
+    "tophub-cli",
+    "nodes.db"
+  ]
 }
