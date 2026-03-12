@@ -4,7 +4,8 @@
   "description": "基于 tophub 的命令行工具，提供快速获取实时热点资讯的功能。",
   "entry": "tophub-cli",
   "dependencies": [
-    "tophub-cli",
+    "tophub-cli-aarch64-apple-darwin",
+    "tophub-cli-x86_64-unknown-linux-gnu",
     "nodes.db"
   ]
 }
